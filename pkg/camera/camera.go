@@ -170,16 +170,22 @@ func (c *Capture) persistentCaptureLoop() {
 			return
 
 		case <-ticker.C:
-			frame, ok := c.persistentCapture.GetFrameWithTimeout(c.interval / 2)
+			// LATEST FRAME POLICY: Sempre pega o frame mais recente disponível
+			// Flush de frames antigos acumulados no buffer
+			var frame []byte
+			var ok bool
+
+			// Tenta pegar um frame
+			frame, ok = c.persistentCapture.GetFrameNonBlocking()
 			if !ok {
 				consecutiveFailures++
 				metrics.FramesDropped.WithLabelValues(c.config.ID, "no_frame_available").Inc()
-				
+
 				if consecutiveFailures >= 5 {
 					logger.Log.Warnw("Múltiplas falhas consecutivas ao obter frames",
 						"camera_id", c.config.ID,
 						"consecutive_failures", consecutiveFailures)
-					
+
 					if c.monitor != nil {
 						c.monitor.RecordFailure(c.config.ID, errors.New("sem frames disponíveis"))
 					}
@@ -187,10 +193,31 @@ func (c *Capture) persistentCaptureLoop() {
 				continue
 			}
 
+			// CRÍTICO: Descarta frames antigos acumulados (política Latest Frame da V2)
+			flushedCount := 0
+			for {
+				oldFrame, hasMore := c.persistentCapture.GetFrameNonBlocking()
+				if !hasMore {
+					break
+				}
+				// Libera o frame antigo
+				releaseFrameBuffer(frame)
+				// Usa o mais recente
+				frame = oldFrame
+				flushedCount++
+			}
+
+			if flushedCount > 0 {
+				logger.Log.Debugw("Frames antigos descartados (Latest Frame Policy)",
+					"camera_id", c.config.ID,
+					"flushed_count", flushedCount)
+				metrics.FramesDropped.WithLabelValues(c.config.ID, "flushed_old_frames").Add(float64(flushedCount))
+			}
+
 			consecutiveFailures = 0
 			metrics.FrameSizeBytes.WithLabelValues(c.config.ID).Observe(float64(len(frame)))
 			c.enqueueFrame(frame, false)
-			
+
 			if c.monitor != nil {
 				c.monitor.RecordSuccess(c.config.ID)
 			}
@@ -291,7 +318,11 @@ func (c *Capture) doCapture() error {
 	cmd := exec.CommandContext(
 		c.ctx,
 		"ffmpeg",
+		"-loglevel", "error",
 		"-rtsp_transport", "tcp",
+		"-fflags", "nobuffer",
+		"-flags", "low_delay",
+		"-max_delay", "0",
 		"-i", c.config.URL,
 		"-frames:v", "1",
 		"-f", "image2pipe",

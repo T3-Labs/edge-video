@@ -1,0 +1,81 @@
+# Edge Video V2 - Git Ignore File
+
+# Compiled binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binaries and coverage
+*.test
+*.out
+coverage.html
+coverage.out
+
+# Go workspace file
+go.work
+
+# Logs
+logs/*.log
+*.log
+debug.log
+
+# Configuration (may contain sensitive data)
+config.local.yaml
+*.secret.yaml
+
+# IDE / Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS files
+Thumbs.db
+desktop.ini
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Archive folder (old versions)
+.archive/
+
+# Build artifacts
+dist/
+build/
+
+# Dependency directories (if vendored)
+vendor/
+
+# Python (for example scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+venv/
+env/
+
+# RabbitMQ / AMQP
+*.queue
+
+# FFmpeg
+*.ffmpeg.log
+
+# Performance profiling
+*.pprof
+*.prof
+mem.prof
+cpu.prof
+
+# Generated documentation
+docs/generated/
+
+# Local test files
+test_*.local.yaml
+local_*.yaml

@@ -1,1 +1,65 @@
-configs/config.example.toml
+target_fps = 15
+protocol = "amqp"
+
+[amqp]
+amqp_url = "amqp://supercarlao_rj_mercado:vTUaGG9S0Kbl_1AhqPxudML1jCYHRq0efkRDA6p_lgM@34.71.212.239:5672/supercarlao_rj_mercado"
+vhost = "supercarlao_rj_mercado"
+exchange = "supercarlao_rj_mercado.exchange"
+routing_key_prefix = "supercarlao_rj_mercado."
+
+[optimization]
+max_workers = 10
+worker_queue_size = 200
+camera_buffer_size = 200
+persistent_buffer_size = 100
+frame_quality = 5
+frame_resolution = "1920x1080"
+use_persistent = true
+circuit_max_failures = 5
+circuit_reset_seconds = 60
+
+[redis]
+enabled = false
+
+[metadata]
+enabled = false
+
+[registration]
+enabled = false
+
+[memory]
+enabled = true
+max_memory_mb = 2048
+warning_percent = 60
+critical_percent = 75
+emergency_percent = 85
+check_interval_seconds = 5
+gc_trigger_percent = 70
+
+[compression]
+enabled = false
+
+[[cameras]]
+id = "cam1"
+name = "Camera 1"
+url = "rtsp://shopguard:!Sg36786@191.7.178.101:8554/cam/realmonitor?channel=1&subtype=0"
+
+[[cameras]]
+id = "cam2"
+name = "Camera 2"
+url = "rtsp://shopguard:!Sg36786@191.7.178.101:8554/cam/realmonitor?channel=2&subtype=0"
+
+[[cameras]]
+id = "cam3"
+name = "Camera 3"
+url = "rtsp://shopguard:!Sg36786@191.7.178.101:8554/cam/realmonitor?channel=3&subtype=0"
+
+[[cameras]]
+id = "cam4"
+name = "Camera 4"
+url = "rtsp://shopguard:!Sg36786@191.7.178.101:8554/cam/realmonitor?channel=4&subtype=0"
+
+[[cameras]]
+id = "cam5"
+name = "Camera 5"
+url = "rtsp://shopguard:!Sg36786@191.7.178.101:8554/cam/realmonitor?channel=5&subtype=0"

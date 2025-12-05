@@ -1,0 +1,65 @@
+# Configuração global
+fps: 15
+quality: 5
+
+# Configuração AMQP global (usada como fallback)
+amqp:
+  url: "amqp://supercarlao_rj_mercado:vTUaGG9S0Kbl_1AhqPxudML1jCYHRq0efkRDA6p_lgM@34.71.212.239:5672/supercarlao_rj_mercado"
+  prefetch_count: 50  # QoS: máximo de frames não-confirmados por consumer (0 = ilimitado)
+
+# Circuit Breaker (proteção contra falhas de câmera)
+# Se habilitado, câmeras que falham muito entram em backoff exponencial
+circuit_breaker:
+  enabled: true                # Habilita circuit breaker (true/false)
+  max_failures: 5              # Falhas consecutivas antes de abrir circuito
+  reset_timeout: 30s           # Tempo antes de tentar reconectar (HALF_OPEN)
+  half_open_successes: 3       # Sucessos em HALF_OPEN necessários para fechar
+  initial_backoff: 5s          # Backoff inicial quando abre circuito
+  max_backoff: 5m              # Backoff máximo (5 minutos)
+  backoff_multiplier: 2.0      # Multiplicador do backoff (5s → 10s → 20s → ...)
+
+# Memory Controller (gestão automática de memória)
+# Se habilitado, monitora uso de RAM e dispara GC quando necessário
+memory_controller:
+  enabled: true                # Habilita memory controller (true/false)
+  max_memory_mb: 2048          # Limite máximo de memória (MB) - ajuste conforme seu sistema
+  warning_percent: 60.0        # Nível WARNING (60% do max) - começa throttling leve
+  critical_percent: 75.0       # Nível CRITICAL (75% do max) - throttling médio
+  emergency_percent: 85.0      # Nível EMERGENCY (85% do max) - throttling agressivo
+  check_interval: 5s           # Intervalo de verificação de memória
+  gc_trigger_percent: 70.0     # Dispara GC quando atingir esse percentual
+
+# Câmeras com configuração INDIVIDUAL de exchange e routing_key
+cameras:
+  # Mercado Autônomo (RTMP)
+  - id: "cam1"
+    url: "rtmp://str-rtmp-001.monuv.com.br:1935/rtmp/96159.stream"
+    exchange: "supercarlao_rj_mercado.exchange"
+    routing_key: "supercarlao_rj_mercado.cam1"
+
+  # Pix Force - Câmeras RTSP (5 canais)
+  - id: "cam2"
+    url: "rtsp://pixforce:pixforce1234@186.193.228.105:12554/cam/realmonitor?channel=1&subtype=0"
+    exchange: "supercarlao_rj_mercado.exchange"
+    routing_key: "supercarlao_rj_mercado.cam2"
+
+  - id: "cam3"
+    url: "rtsp://pixforce:pixforce1234@186.193.228.105:12554/cam/realmonitor?channel=2&subtype=0"
+    exchange: "supercarlao_rj_mercado.exchange"
+    routing_key: "supercarlao_rj_mercado.cam3"
+
+  - id: "cam4"
+    url: "rtsp://pixforce:pixforce1234@186.193.228.105:12554/cam/realmonitor?channel=3&subtype=0"
+    exchange: "supercarlao_rj_mercado.exchange"
+    routing_key: "supercarlao_rj_mercado.cam4"
+
+  - id: "cam5"
+    url: "rtsp://pixforce:pixforce1234@186.193.228.105:12554/cam/realmonitor?channel=4&subtype=0"
+    exchange: "supercarlao_rj_mercado.exchange"
+    routing_key: "supercarlao_rj_mercado.cam5"
+
+  - id: "cam6"
+    url: "rtsp://pixforce:pixforce1234@186.193.228.105:12554/cam/realmonitor?channel=banana"
+    exchange: "supercarlao_rj_mercado.exchange"
+    routing_key: "supercarlao_rj_mercado.cam6"
+  

@@ -1,0 +1,65 @@
+# Edge Video V2 - Configuração RECOMENDADA para 6 câmeras
+# Baseado em análise de consumo de memória
+
+# Configuração global
+fps: 15
+quality: 5
+
+# Configuração AMQP global (usada como fallback)
+amqp:
+  url: "amqp://supercarlao_rj_mercado:vTUaGG9S0Kbl_1AhqPxudML1jCYHRq0efkRDA6p_lgM@34.71.212.239:5672/supercarlao_rj_mercado"
+
+# Circuit Breaker (proteção contra falhas de câmera)
+circuit_breaker:
+  enabled: true
+  max_failures: 5
+  reset_timeout: 30s
+  half_open_successes: 3
+  initial_backoff: 5s
+  max_backoff: 5m
+  backoff_multiplier: 2.0
+
+# Memory Controller - VALORES OTIMIZADOS PARA 6 CÂMERAS
+# Consumo esperado: ~558 MB (FFmpeg 450MB + buffers 50MB + runtime 58MB)
+memory_controller:
+  enabled: true
+  max_memory_mb: 1024          # 1 GB - apropriado para 6 câmeras (~558 MB esperado)
+  warning_percent: 50.0        # WARNING aos 512 MB (92% do esperado)
+  critical_percent: 70.0       # CRITICAL aos 716 MB (128% do esperado)
+  emergency_percent: 85.0      # EMERGENCY aos 870 MB (156% do esperado)
+  check_interval: 5s
+  gc_trigger_percent: 60.0     # GC aos 614 MB (110% do esperado)
+
+# Câmeras
+cameras:
+  # Mercado Autônomo (RTMP) - ~320 KB/frame
+  - id: "cam1"
+    url: "rtmp://str-rtmp-001.monuv.com.br:1935/rtmp/96159.stream"
+    exchange: "supercarlao_rj_mercado.exchange"
+    routing_key: "supercarlao_rj_mercado.cam1"
+
+  # Pix Force - Câmeras RTSP
+  - id: "cam2"  # ~64 KB/frame
+    url: "rtsp://pixforce:pixforce1234@186.193.228.105:12554/cam/realmonitor?channel=1&subtype=0"
+    exchange: "supercarlao_rj_mercado.exchange"
+    routing_key: "supercarlao_rj_mercado.cam2"
+
+  - id: "cam3"  # ~180 KB/frame
+    url: "rtsp://pixforce:pixforce1234@186.193.228.105:12554/cam/realmonitor?channel=2&subtype=0"
+    exchange: "supercarlao_rj_mercado.exchange"
+    routing_key: "supercarlao_rj_mercado.cam3"
+
+  - id: "cam4"  # ~115 KB/frame
+    url: "rtsp://pixforce:pixforce1234@186.193.228.105:12554/cam/realmonitor?channel=3&subtype=0"
+    exchange: "supercarlao_rj_mercado.exchange"
+    routing_key: "supercarlao_rj_mercado.cam4"
+
+  - id: "cam5"  # ~97 KB/frame
+    url: "rtsp://pixforce:pixforce1234@186.193.228.105:12554/cam/realmonitor?channel=4&subtype=0"
+    exchange: "supercarlao_rj_mercado.exchange"
+    routing_key: "supercarlao_rj_mercado.cam5"
+
+  - id: "cam6"  # NOT WORKING - canal inválido
+    url: "rtsp://pixforce:pixforce1234@186.193.228.105:12554/cam/realmonitor?channel=banana"
+    exchange: "supercarlao_rj_mercado.exchange"
+    routing_key: "supercarlao_rj_mercado.cam6"

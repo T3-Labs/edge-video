@@ -93,12 +93,16 @@ func (pc *PersistentCapture) startFFmpeg() error {
 	pc.cmd = exec.CommandContext(
 		pc.ctx,
 		"ffmpeg",
+		"-loglevel", "fatal",  // Menos verboso
 		"-rtsp_transport", "tcp",
+		"-fflags", "+genpts+discardcorrupt",  // Descarta frames corruptos
+		"-flags", "low_delay",
+		"-err_detect", "ignore_err",  // Ignora erros HEVC
 		"-i", pc.rtspURL,
+		"-vf", fmt.Sprintf("fps=%d", pc.fps),
 		"-f", "image2pipe",
 		"-vcodec", "mjpeg",
 		"-q:v", fmt.Sprintf("%d", pc.quality),
-		"-r", fmt.Sprintf("%d", pc.fps),
 		"-",
 	)
 
@@ -187,7 +191,7 @@ func (pc *PersistentCapture) logErrors() {
 	scanner := bufio.NewScanner(pc.stderr)
 	for scanner.Scan() {
 		line := scanner.Text()
-		logger.Log.Debugw("FFmpeg stderr",
+		logger.Log.Warnw("FFmpeg stderr",
 			"camera_id", pc.cameraID,
 			"message", line)
 	}
