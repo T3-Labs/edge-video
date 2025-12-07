@@ -14,15 +14,34 @@ type CameraConfig struct {
 	URL  string `mapstructure:"url"`
 }
 
+// Backwards-compatible AMQP config used by tests/examples
 type AMQPConfig struct {
 	AmqpURL          string `mapstructure:"amqp_url"`
 	Exchange         string `mapstructure:"exchange"`
 	RoutingKeyPrefix string `mapstructure:"routing_key_prefix"`
+	TTLSeconds       int    `mapstructure:"ttl_seconds"`
 }
 
+// MQTT config (kept for compatibility)
 type MQTTConfig struct {
 	Broker      string `mapstructure:"broker"`
 	TopicPrefix string `mapstructure:"topic_prefix"`
+	TTLSeconds  int    `mapstructure:"ttl_seconds"`
+}
+
+// Metadata config (some examples use cfg.Metadata)
+type MetadataConfig struct {
+	Enabled    bool   `mapstructure:"enabled"`
+	Exchange   string `mapstructure:"exchange"`
+	RoutingKey string `mapstructure:"routing_key"`
+	TTLSeconds int    `mapstructure:"ttl_seconds"`
+}
+
+type RabbitMQConfig struct {
+	URL        string `mapstructure:"url"`
+	Exchange   string `mapstructure:"exchange"`
+	RoutingKey string `mapstructure:"routing_key"`
+	TTLSeconds int    `mapstructure:"ttl_seconds"` // optional per-service override
 }
 
 type Compression struct {
@@ -52,12 +71,6 @@ type RedisConfig struct {
 	Prefix     string `mapstructure:"prefix"`
 }
 
-type MetadataConfig struct {
-	Enabled    bool   `mapstructure:"enabled"`
-	Exchange   string `mapstructure:"exchange"`
-	RoutingKey string `mapstructure:"routing_key"`
-}
-
 type RegistrationConfig struct {
 	Enabled bool   `mapstructure:"enabled"`
 	APIURL  string `mapstructure:"api_url"`
@@ -73,19 +86,23 @@ type MemoryConfig struct {
 	GCTriggerPercent float64 `mapstructure:"gc_trigger_percent"`
 }
 
+// Config is the application configuration. It includes both the newer RabbitMQ fields
+// and legacy-compatible AMQP/MQTT/Metadata fields used by tests and examples.
 type Config struct {
 	TargetFPS           float64            `mapstructure:"target_fps"`
-	Protocol            string             `mapstructure:"protocol"`
 	UseOptimizedCapture bool               `mapstructure:"use_optimized_capture"`
+	Protocol            string             `mapstructure:"protocol"`
 	AMQP                AMQPConfig         `mapstructure:"amqp"`
 	MQTT                MQTTConfig         `mapstructure:"mqtt"`
-	Redis               RedisConfig        `mapstructure:"redis"`
 	Metadata            MetadataConfig     `mapstructure:"metadata"`
+	RabbitMQ            RabbitMQConfig     `mapstructure:"rabbitmq"`
+	Redis               RedisConfig        `mapstructure:"redis"`
 	Registration        RegistrationConfig `mapstructure:"registration"`
 	Compression         Compression        `mapstructure:"compression"`
 	Optimization        Optimization       `mapstructure:"optimization"`
 	Memory              MemoryConfig       `mapstructure:"memory"`
 	Cameras             []CameraConfig     `mapstructure:"cameras"`
+	TTLSeconds          int                `mapstructure:"ttl_seconds"` // global default (seconds)
 }
 
 // GetFrameInterval calcula o intervalo de tempo entre os frames com base no TargetFPS.
@@ -106,6 +123,52 @@ func LoadConfig(path string) (*Config, error) {
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, err
 	}
+
+	// Default TTL handling: if not provided, use 30s. Allow global ttl_seconds to set both
+	if cfg.TTLSeconds <= 0 {
+		cfg.TTLSeconds = 30
+	}
+
+	if cfg.Redis.TTLSeconds <= 0 {
+		cfg.Redis.TTLSeconds = cfg.TTLSeconds
+	}
+
+	// Map legacy AMQP fields to internal RabbitMQ fields for compatibility
+	if cfg.RabbitMQ.URL == "" && cfg.AMQP.AmqpURL != "" {
+		cfg.RabbitMQ.URL = cfg.AMQP.AmqpURL
+	}
+	if cfg.RabbitMQ.Exchange == "" && cfg.AMQP.Exchange != "" {
+		cfg.RabbitMQ.Exchange = cfg.AMQP.Exchange
+	}
+	if cfg.RabbitMQ.RoutingKey == "" && cfg.AMQP.RoutingKeyPrefix != "" {
+		// The older field is a prefix; map it to routing_key as-is for compatibility
+		cfg.RabbitMQ.RoutingKey = cfg.AMQP.RoutingKeyPrefix
+	}
+
+	// Map Metadata config if present
+	if cfg.Metadata.Exchange != "" && cfg.RabbitMQ.Exchange == "" {
+		cfg.RabbitMQ.Exchange = cfg.Metadata.Exchange
+	}
+	if cfg.Metadata.RoutingKey != "" && cfg.RabbitMQ.RoutingKey == "" {
+		cfg.RabbitMQ.RoutingKey = cfg.Metadata.RoutingKey
+	}
+
+	if cfg.RabbitMQ.TTLSeconds <= 0 {
+		// prefer explicit metadata or AMQP TTL if set
+		if cfg.Metadata.TTLSeconds > 0 {
+			cfg.RabbitMQ.TTLSeconds = cfg.Metadata.TTLSeconds
+		} else if cfg.AMQP.TTLSeconds > 0 {
+			cfg.RabbitMQ.TTLSeconds = cfg.AMQP.TTLSeconds
+		} else {
+			cfg.RabbitMQ.TTLSeconds = cfg.TTLSeconds
+		}
+	}
+
+	// Ensure Protocol has a default
+	if cfg.Protocol == "" {
+		cfg.Protocol = "amqp"
+	}
+
 	return &cfg, nil
 }
 
@@ -113,11 +176,17 @@ func LoadConfig(path string) (*Config, error) {
 // Exemplo: amqp://user:pass@host:5672/myvhost -> "myvhost"
 // Retorna "/" se nenhum vhost for especificado
 func (c *Config) ExtractVhostFromAMQP() string {
-	if c.AMQP.AmqpURL == "" {
+	// Use the AMQP amqp_url if present, otherwise RabbitMQ URL
+	amqpURL := c.AMQP.AmqpURL
+	if amqpURL == "" {
+		amqpURL = c.RabbitMQ.URL
+	}
+
+	if amqpURL == "" {
 		return "/"
 	}
 
-	parsedURL, err := url.Parse(c.AMQP.AmqpURL)
+	parsedURL, err := url.Parse(amqpURL)
 	if err != nil {
 		return "/"
 	}

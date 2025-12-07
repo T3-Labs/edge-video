@@ -2,9 +2,10 @@ package metadata
 
 import (
 	"encoding/json"
+	"strconv"
 	"time"
 
-	"github.com/streadway/amqp"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type EventType string
@@ -28,13 +29,12 @@ type Publisher struct {
 	channel    *amqp.Channel
 	exchange   string
 	routingKey string
-	enabled    bool
+	ttlSeconds int
 }
 
 // NewPublisher creates a new metadata Publisher.
-func NewPublisher(ch *amqp.Channel, exchange, routingKey string, enabled bool) *Publisher {
-	// Se estiver habilitado e o canal existir, declara o exchange
-	if enabled && ch != nil {
+func NewPublisher(ch *amqp.Channel, exchange, routingKey string, ttlSeconds int) *Publisher {
+	if ch != nil {
 		err := ch.ExchangeDeclare(
 			exchange,
 			"topic",
@@ -55,35 +55,33 @@ func NewPublisher(ch *amqp.Channel, exchange, routingKey string, enabled bool) *
 		channel:    ch,
 		exchange:   exchange,
 		routingKey: routingKey,
-		enabled:    enabled,
+		ttlSeconds: ttlSeconds,
 	}
-}
-
-// Enabled returns true if the metadata publisher is enabled.
-func (p *Publisher) Enabled() bool {
-	return p.enabled
 }
 
 // Metadata represents the structure of the metadata message.
 type Metadata struct {
-	EventType EventType `json:"event_type"`
-	CameraID  string    `json:"camera_id"`
-	Timestamp time.Time `json:"timestamp"`
-	RedisKey  string    `json:"redis_key,omitempty"`
-	Width     int       `json:"width,omitempty"`
-	Height    int       `json:"height,omitempty"`
-	Encoding  string    `json:"encoding,omitempty"`
-	SizeBytes int       `json:"size_bytes,omitempty"`
+	EventType     EventType `json:"event_type"`
+	CameraID      string    `json:"camera_id"`
+	Timestamp     time.Time `json:"timestamp"`
+	TimestampNano int64     `json:"timestamp_nano"`
+	Sequence      string    `json:"sequence,omitempty"`
+	RedisKey      string    `json:"redis_key,omitempty"`
+	Width         int       `json:"width,omitempty"`
+	Height        int       `json:"height,omitempty"`
+	Encoding      string    `json:"encoding,omitempty"`
+	SizeBytes     int       `json:"size_bytes,omitempty"`
+	TTLSeconds    int       `json:"ttl_seconds"`
 }
 
 type CameraStatusEvent struct {
-	EventType         EventType   `json:"event_type"`
-	CameraID          string      `json:"camera_id"`
-	Timestamp         time.Time   `json:"timestamp"`
-	State             CameraState `json:"state"`
-	ConsecutiveFailures int       `json:"consecutive_failures,omitempty"`
-	LastError         string      `json:"last_error,omitempty"`
-	Message           string      `json:"message,omitempty"`
+	EventType           EventType   `json:"event_type"`
+	CameraID            string      `json:"camera_id"`
+	Timestamp           time.Time   `json:"timestamp"`
+	State               CameraState `json:"state"`
+	ConsecutiveFailures int         `json:"consecutive_failures,omitempty"`
+	LastError           string      `json:"last_error,omitempty"`
+	Message             string      `json:"message,omitempty"`
 }
 
 type SystemStatusEvent struct {
@@ -97,24 +95,28 @@ type SystemStatusEvent struct {
 
 // PublishMetadata sends a JSON message with frame metadata to RabbitMQ.
 func (p *Publisher) PublishMetadata(cameraID string, timestamp time.Time, redisKey string, width, height, size int, encoding string) error {
-	if !p.enabled {
-		return nil
-	}
-
 	metadata := Metadata{
-		EventType: EventTypeFrame,
-		CameraID:  cameraID,
-		Timestamp: timestamp,
-		RedisKey:  redisKey,
-		Width:     width,
-		Height:    height,
-		Encoding:  encoding,
-		SizeBytes: size,
+		EventType:     EventTypeFrame,
+		CameraID:      cameraID,
+		Timestamp:     timestamp,
+		TimestampNano: timestamp.UnixNano(),
+		RedisKey:      redisKey,
+		Width:         width,
+		Height:        height,
+		Encoding:      encoding,
+		SizeBytes:     size,
+		TTLSeconds:    p.ttlSeconds,
 	}
 
 	body, err := json.Marshal(metadata)
 	if err != nil {
 		return err
+	}
+
+	expiration := ""
+	if p.ttlSeconds > 0 {
+		// RabbitMQ expects expiration as milliseconds string
+		expiration = strconv.FormatInt(int64(p.ttlSeconds*1000), 10)
 	}
 
 	return p.channel.Publish(
@@ -125,16 +127,13 @@ func (p *Publisher) PublishMetadata(cameraID string, timestamp time.Time, redisK
 		amqp.Publishing{
 			ContentType: "application/json",
 			Body:        body,
+			Expiration:  expiration,
 		},
 	)
 }
 
 // PublishCameraStatus sends camera status change events to RabbitMQ.
 func (p *Publisher) PublishCameraStatus(cameraID string, state CameraState, consecutiveFailures int, lastError error, message string) error {
-	if !p.enabled {
-		return nil
-	}
-
 	event := CameraStatusEvent{
 		EventType:           EventTypeCameraStatus,
 		CameraID:            cameraID,
@@ -167,10 +166,6 @@ func (p *Publisher) PublishCameraStatus(cameraID string, state CameraState, cons
 
 // PublishSystemStatus sends system-wide status events to RabbitMQ.
 func (p *Publisher) PublishSystemStatus(totalCameras, activeCameras, inactiveCameras int, message string) error {
-	if !p.enabled {
-		return nil
-	}
-
 	event := SystemStatusEvent{
 		EventType:       EventTypeSystemStatus,
 		Timestamp:       time.Now(),

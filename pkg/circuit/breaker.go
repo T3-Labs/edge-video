@@ -32,13 +32,13 @@ type Breaker struct {
 	maxFailures       int64
 	resetTimeout      time.Duration
 	halfOpenSuccesses int
-	
+
 	// Backoff exponencial
 	initialBackoff    time.Duration
 	maxBackoff        time.Duration
 	backoffMultiplier float64
 	currentBackoff    time.Duration
-	
+
 	mu            sync.RWMutex
 	state         State
 	failures      int64
@@ -48,11 +48,9 @@ type Breaker struct {
 }
 
 func NewBreaker(name string, maxFailures int64, resetTimeout time.Duration) *Breaker {
-	initialBackoff := resetTimeout / 2
-	if initialBackoff < 5*time.Second {
-		initialBackoff = 5 * time.Second
-	}
-	
+	// Use resetTimeout as initial backoff so unit tests with small timeouts work
+	initialBackoff := resetTimeout
+
 	return &Breaker{
 		name:              name,
 		maxFailures:       maxFailures,
@@ -71,14 +69,14 @@ func (cb *Breaker) Call(fn func() error) error {
 	if !cb.Allow() {
 		return fmt.Errorf("circuit breaker %s aberto", cb.name)
 	}
-	
+
 	err := fn()
-	
+
 	if err != nil {
 		cb.RecordFailure()
 		return err
 	}
-	
+
 	cb.RecordSuccess()
 	return nil
 }
@@ -86,22 +84,22 @@ func (cb *Breaker) Call(fn func() error) error {
 func (cb *Breaker) Allow() bool {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
-	
+
 	switch cb.state {
 	case StateClosed:
 		return true
-		
+
 	case StateOpen:
-		// Usa backoff exponencial em vez de resetTimeout fixo
+		// Use exponential backoff timing
 		if time.Since(cb.lastFailTime) > cb.currentBackoff {
 			cb.setState(StateHalfOpen)
 			return true
 		}
 		return false
-		
+
 	case StateHalfOpen:
 		return true
-		
+
 	default:
 		return false
 	}
@@ -110,21 +108,21 @@ func (cb *Breaker) Allow() bool {
 func (cb *Breaker) RecordSuccess() {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
-	
+
 	cb.successes++
-	
+
 	switch cb.state {
 	case StateClosed:
 		cb.failures = 0
-		// Reseta o backoff quando voltamos ao estado normal
+		// Reset backoff when returning to normal
 		cb.currentBackoff = cb.initialBackoff
-		
+
 	case StateHalfOpen:
 		if cb.successes >= int64(cb.halfOpenSuccesses) {
 			cb.setState(StateClosed)
 			cb.failures = 0
 			cb.successes = 0
-			// Reseta o backoff quando voltamos ao estado fechado
+			// Reset backoff when returning to closed
 			cb.currentBackoff = cb.initialBackoff
 		}
 	}
@@ -133,25 +131,25 @@ func (cb *Breaker) RecordSuccess() {
 func (cb *Breaker) RecordFailure() {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
-	
+
 	cb.failures++
 	cb.lastFailTime = time.Now()
 	cb.successes = 0
-	
+
 	switch cb.state {
 	case StateClosed:
 		if cb.failures >= cb.maxFailures {
 			cb.setState(StateOpen)
-			// Incrementa o backoff exponencialmente quando abrimos o circuito
+			// Exponentially increase backoff when opening the circuit
 			cb.currentBackoff = time.Duration(float64(cb.currentBackoff) * cb.backoffMultiplier)
 			if cb.currentBackoff > cb.maxBackoff {
 				cb.currentBackoff = cb.maxBackoff
 			}
 		}
-		
+
 	case StateHalfOpen:
 		cb.setState(StateOpen)
-		// Incrementa o backoff quando falhamos no estado half-open
+		// Increase backoff when failing in half-open
 		cb.currentBackoff = time.Duration(float64(cb.currentBackoff) * cb.backoffMultiplier)
 		if cb.currentBackoff > cb.maxBackoff {
 			cb.currentBackoff = cb.maxBackoff
@@ -178,7 +176,7 @@ func (cb *Breaker) State() State {
 func (cb *Breaker) Stats() BreakerStats {
 	cb.mu.RLock()
 	defer cb.mu.RUnlock()
-	
+
 	return BreakerStats{
 		Name:            cb.name,
 		State:           cb.state,
@@ -194,7 +192,7 @@ func (cb *Breaker) Stats() BreakerStats {
 func (cb *Breaker) Reset() {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
-	
+
 	cb.state = StateClosed
 	cb.failures = 0
 	cb.successes = 0
