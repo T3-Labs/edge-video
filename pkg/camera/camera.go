@@ -14,11 +14,10 @@ import (
 	"github.com/T3-Labs/edge-video/pkg/logger"
 	"github.com/T3-Labs/edge-video/pkg/memcontrol"
 	"github.com/T3-Labs/edge-video/pkg/metrics"
-	"github.com/T3-Labs/edge-video/pkg/mq"
 	"github.com/T3-Labs/edge-video/pkg/util"
 	"github.com/T3-Labs/edge-video/pkg/worker"
 	"github.com/go-redis/redis/v8"
-	"github.com/streadway/amqp"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type Config struct {
@@ -33,7 +32,6 @@ type Capture struct {
 	config            Config
 	interval          time.Duration
 	compressor        *util.Compressor
-	publisher         mq.Publisher
 	redisStore        *storage.RedisStore
 	metaPublisher     *metadata.Publisher
 	workerPool        *worker.Pool
@@ -50,7 +48,6 @@ func NewCapture(
 	config Config,
 	interval time.Duration,
 	compressor *util.Compressor,
-	publisher mq.Publisher,
 	redisStore *storage.RedisStore,
 	metaPublisher *metadata.Publisher,
 	workerPool *worker.Pool,
@@ -70,7 +67,6 @@ func NewCapture(
 		config:         config,
 		interval:       interval,
 		compressor:     compressor,
-		publisher:      publisher,
 		redisStore:     redisStore,
 		metaPublisher:  metaPublisher,
 		workerPool:     workerPool,
@@ -174,12 +170,12 @@ func (c *Capture) persistentCaptureLoop() {
 			if !ok {
 				consecutiveFailures++
 				metrics.FramesDropped.WithLabelValues(c.config.ID, "no_frame_available").Inc()
-				
+
 				if consecutiveFailures >= 5 {
 					logger.Log.Warnw("Múltiplas falhas consecutivas ao obter frames",
 						"camera_id", c.config.ID,
 						"consecutive_failures", consecutiveFailures)
-					
+
 					if c.monitor != nil {
 						c.monitor.RecordFailure(c.config.ID, errors.New("sem frames disponíveis"))
 					}
@@ -190,7 +186,7 @@ func (c *Capture) persistentCaptureLoop() {
 			consecutiveFailures = 0
 			metrics.FrameSizeBytes.WithLabelValues(c.config.ID).Observe(float64(len(frame)))
 			c.enqueueFrame(frame, false)
-			
+
 			if c.monitor != nil {
 				c.monitor.RecordSuccess(c.config.ID)
 			}
@@ -266,14 +262,14 @@ func (c *Capture) captureAndPublish() {
 		} else {
 			errorType = "connection_failed"
 		}
-		
+
 		logger.Log.Errorw("Erro na captura com circuit breaker",
 			"camera_id", c.config.ID,
 			"error", err,
 			"error_type", errorType,
 			"circuit_state", c.circuitBreaker.State().String())
 		metrics.FramesDropped.WithLabelValues(c.config.ID, errorType).Inc()
-		
+
 		if c.monitor != nil {
 			c.monitor.RecordFailure(c.config.ID, err)
 		}
@@ -281,7 +277,7 @@ func (c *Capture) captureAndPublish() {
 	}
 
 	metrics.CaptureLatency.WithLabelValues(c.config.ID).Observe(time.Since(start).Seconds())
-	
+
 	if c.monitor != nil {
 		c.monitor.RecordSuccess(c.config.ID)
 	}
@@ -309,7 +305,7 @@ func (c *Capture) doCapture() error {
 		// Classifica o tipo de erro do FFmpeg
 		stderrStr := stderr.String()
 		errorContext := "unknown"
-		
+
 		if errors.Is(err, context.Canceled) {
 			errorContext = "context_canceled"
 		} else if errors.Is(err, context.DeadlineExceeded) {
@@ -327,13 +323,13 @@ func (c *Capture) doCapture() error {
 				errorContext = "ffmpeg_error"
 			}
 		}
-		
+
 		logger.Log.Errorw("Erro ao capturar frame",
 			"camera_id", c.config.ID,
 			"error", err,
 			"error_context", errorContext,
 			"stderr", stderrStr)
-		
+
 		metrics.CameraReconnectAttempts.WithLabelValues(c.config.ID).Inc()
 		return err
 	}
@@ -394,7 +390,6 @@ func (c *Capture) newJob(frame buffer.Frame) *FrameProcessJob {
 		cameraID:      frame.CameraID,
 		frameData:     frame.Data,
 		timestamp:     frame.Timestamp,
-		publisher:     c.publisher,
 		redisStore:    c.redisStore,
 		metaPublisher: c.metaPublisher,
 		release:       frame.Release,
@@ -405,7 +400,6 @@ type FrameProcessJob struct {
 	cameraID      string
 	frameData     []byte
 	timestamp     time.Time
-	publisher     mq.Publisher
 	redisStore    *storage.RedisStore
 	metaPublisher *metadata.Publisher
 	release       func()
@@ -421,17 +415,9 @@ func (j *FrameProcessJob) Process(ctx context.Context) error {
 			j.release()
 		}
 	}()
-	start := time.Now()
+	// start := time.Now()
 
-	err := j.publisher.Publish(ctx, j.cameraID, j.frameData)
-	if err != nil {
-		logger.Log.Errorw("Erro ao publicar frame",
-			"camera_id", j.cameraID,
-			"error", err)
-		return err
-	}
-
-	metrics.PublishLatency.WithLabelValues("amqp").Observe(time.Since(start).Seconds())
+	// metrics.PublishLatency.WithLabelValues("amqp").Observe(time.Since(start).Seconds())
 	metrics.FramesProcessed.WithLabelValues(j.cameraID).Inc()
 
 	if j.redisStore.Enabled() {
@@ -454,20 +440,18 @@ func (j *FrameProcessJob) Process(ctx context.Context) error {
 
 		metrics.StorageOperations.WithLabelValues("save_frame", "success").Inc()
 
-		if j.metaPublisher.Enabled() {
-			err = j.metaPublisher.PublishMetadata(j.cameraID, j.timestamp, key, width, height, len(j.frameData), "jpeg")
-			if err != nil {
-				if amqpErr, ok := err.(*amqp.Error); ok && amqpErr.Code == amqp.ChannelError {
-					logger.Log.Errorw("Metadata publish error (channel closed)",
-						"camera_id", j.cameraID,
-						"error", err)
-				} else {
-					logger.Log.Errorw("Metadata publish error",
-						"camera_id", j.cameraID,
-						"error", err)
-				}
-				return err
+		err = j.metaPublisher.PublishMetadata(j.cameraID, j.timestamp, key, width, height, len(j.frameData), "jpeg")
+		if err != nil {
+			if amqpErr, ok := err.(*amqp.Error); ok && amqpErr.Code == amqp.ChannelError {
+				logger.Log.Errorw("Metadata publish error (channel closed)",
+					"camera_id", j.cameraID,
+					"error", err)
+			} else {
+				logger.Log.Errorw("Metadata publish error",
+					"camera_id", j.cameraID,
+					"error", err)
 			}
+			return err
 		}
 	}
 

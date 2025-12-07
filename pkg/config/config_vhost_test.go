@@ -6,9 +6,9 @@ import (
 
 func TestExtractVhostFromAMQP(t *testing.T) {
 	tests := []struct {
-		name     string
-		amqpURL  string
-		want     string
+		name    string
+		amqpURL string
+		want    string
 	}{
 		{
 			name:    "URL com vhost customizado",
@@ -55,8 +55,8 @@ func TestExtractVhostFromAMQP(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &Config{
-				AMQP: AMQPConfig{
-					AmqpURL: tt.amqpURL,
+				RabbitMQ: RabbitMQConfig{
+					URL: tt.amqpURL,
 				},
 			}
 
@@ -99,8 +99,8 @@ func TestExtractVhostFromAMQP_RealWorldCases(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &Config{
-				AMQP: AMQPConfig{
-					AmqpURL: tt.amqpURL,
+				RabbitMQ: RabbitMQConfig{
+					URL: tt.amqpURL,
 				},
 			}
 
@@ -125,13 +125,13 @@ func TestVhostUniqueness(t *testing.T) {
 	}
 
 	vhosts := make(map[string]bool)
-	
+
 	for _, url := range urls {
 		cfg := &Config{
-			AMQP: AMQPConfig{AmqpURL: url},
+			RabbitMQ: RabbitMQConfig{URL: url},
 		}
 		vhost := cfg.ExtractVhostFromAMQP()
-		
+
 		if vhosts[vhost] {
 			t.Errorf("Vhost duplicado detectado: %s para URL %s", vhost, url)
 		}

@@ -6,17 +6,33 @@ target_fps = 30
 # Protocolo de mensageria: "amqp" ou "mqtt"
 protocol = "amqp"
 
-# Configuração AMQP (RabbitMQ)
+# Global TTL for frames/messages in seconds (default 30)
+ttl_seconds = 30
+
+# Configuração AMQP (legado usado pelos testes/examples)
 [amqp]
-amqp_url = ""
-vhost =  ""
-exchange = ""
+amqp_url = "amqp://guest:guest@localhost:5672/"
+exchange = "camera.metadata"
 routing_key_prefix = "camera."
 
-# Configuração MQTT
+# Configuração MQTT (legado)
 [mqtt]
 broker = "tcp://localhost:1883"
 topic_prefix = "camera/"
+
+# Configuração Metadata (compat)
+[metadata]
+enabled = true
+exchange = "camera.metadata"
+routing_key = "camera.metadata.event"
+
+# Configuração RabbitMQ
+[rabbitmq]
+url = ""
+exchange = "camera.metadata"
+routing_key = "camera.metadata.event"
+# Optional per-service TTL (seconds). If omitted, global ttl_seconds is used.
+ttl_seconds = 30
 
 # Configurações de otimização de performance
 [optimization]
@@ -38,11 +54,6 @@ address = ""
 ttl_seconds = 30
 prefix = "frames"
 
-# Configuração de Metadados (publicação de metadados de frames)
-[metadata]
-enabled = true
-exchange = "camera.metadata"
-routing_key = "camera.metadata.event"
 
 # Configuração de Registro na API
 # Envia dados do sistema para uma API ao iniciar
@@ -53,9 +64,9 @@ api_url = ""
 
 # Câmeras RTSP
 [[cameras]]
-id = ""
-url = ""
+id = "cam1"
+url = "rtsp://example.com/stream1"
 
 [[cameras]]
-id = ""
-url = ""
+id = "cam2"
+url = "rtsp://example.com/stream2"

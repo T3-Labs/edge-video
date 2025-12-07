@@ -18,7 +18,7 @@
 - 🎥 **Multi-Câmera RTSP/IP** - Captura simultânea de múltiplas câmeras
 - 🏢 **Multi-Tenant (RabbitMQ vhost)** - Isolamento completo de dados por cliente
 - 💾 **Redis Otimizado** - Chaves Unix nanoseconds, queries temporais eficientes
-- 🚀 **Distribuição AMQP/MQTT** - Flexibilidade para diferentes integrações
+- 🚀 **Distribuição AMQP** - Flexibilidade para diferentes integrações
 - 🧠 **Controle de Memória** - Previne travamento do SO em ambientes restritos
 - ⚡ **Worker Pool + Circuit Breaker** - Alta performance e resiliência
 - 📊 **Métricas Prometheus** - Observabilidade completa
@@ -170,14 +170,16 @@ channel.start_consuming()
 ```
 edge-video/
 ├── cmd/                    # Aplicações executáveis
-│   ├── edge-video/        # Aplicação principal
+│   ├── edge-video/        # Aplicação principal (Entrypoint)
 │   └── edge-video-service/# Windows service wrapper
+├── internal/              # Código interno privado
+│   ├── app/               # Lógica da aplicação (App struct)
+│   └── ...
 ├── pkg/                    # Pacotes reutilizáveis
 │   ├── camera/            # Captura RTSP
 │   ├── memcontrol/        # Controle de memória
-│   ├── mq/                # Publishers AMQP/MQTT
+│   ├── mq/                # Publishers AMQP
 │   └── ...
-├── internal/              # Código interno privado
 ├── configs/               # Arquivos de configuração
 │   ├── config.example.toml
 │   ├── config.memory-control.toml
@@ -187,7 +189,8 @@ edge-video/
 │   └── go/               # Utilitários Go
 ├── docs/                  # Documentação completa
 ├── scripts/              # Scripts de build/deploy
-└── installer/            # Instalador Windows
+├── installer/            # Instalador Windows
+└── Makefile              # Comandos de build e automação
 ```
 
 ---
@@ -229,6 +232,24 @@ edge-video/
 - FFmpeg (para captura RTSP)
 
 ### Build Local
+
+Você pode usar o `Makefile` para facilitar as tarefas comuns:
+
+```bash
+# Compilar
+make build
+
+# Executar
+make run
+
+# Executar testes
+make test
+
+# Limpar artefatos
+make clean
+```
+
+Ou usar os comandos Go diretamente:
 
 ```bash
 # Compilar
@@ -363,7 +384,7 @@ O **Edge Video** é uma plataforma distribuída para captura, processamento e di
 - **Multi-Câmera RTSP/IP**: Captura simultânea de múltiplas câmeras.
 - **Isolamento Multi-Tenant (RabbitMQ vhost)**: Cada cliente tem seu próprio namespace, sem colisão de dados.
 - **Chave Redis Otimizada (Unix Nanoseconds)**: Chaves compactas, ordenáveis e com queries temporais eficientes.
-- **Distribuição via RabbitMQ (AMQP) e MQTT**: Flexibilidade para diferentes integrações.
+- **Distribuição via RabbitMQ (AMQP)**: Flexibilidade para diferentes integrações.
 - **Buffer Circular, Worker Pool e Circuit Breaker**: Controle de memória, fila de processamento e proteção contra overflow/falhas.
 - **Publicação de Metadados**: Eventos JSON leves para consumidores, detalhando cada frame.
 - **Armazenamento Opcional em Redis**: TTL configurável, queries rápidas e compatibilidade multi-tenant.
@@ -423,7 +444,7 @@ docker-compose up -d --build
 - Métricas: Prometheus em `:2112/metrics`
 
 ### 4. Integração
-- Consuma metadados e frames via Python, Go ou qualquer linguagem compatível com AMQP/MQTT/Redis.
+- Consuma metadados e frames via Python, Go ou qualquer linguagem compatível com AMQP/Redis.
 - Exemplo Python:
 ```python
 import pika, redis, json
@@ -454,7 +475,7 @@ def callback(ch, method, properties, body):
 - [docs/windows/README.md](docs/windows/README.md): Instalação e uso no Windows
 - [docs/vhost-based-identification.md](docs/vhost-based-identification.md): Multi-tenancy e isolamento
 - [docs/features/redis-storage.md](docs/features/redis-storage.md): Detalhes do armazenamento Redis
-- [docs/features/message-queue.md](docs/features/message-queue.md): Integração RabbitMQ/MQTT
+- [docs/features/message-queue.md](docs/features/message-queue.md): Integração RabbitMQ
 - [docs/features/metadata.md](docs/features/metadata.md): Estrutura de metadados
 - [docs/changelog.md](docs/changelog.md): Histórico de mudanças
 

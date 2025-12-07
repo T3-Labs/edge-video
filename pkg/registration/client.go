@@ -68,9 +68,9 @@ func (c *Client) Register(ctx context.Context, cfg *config.Config, vhost string)
 	payload := RegistrationPayload{
 		Cameras:     cameras,
 		Namespace:   vhost,
-		RabbitMQURL: cfg.AMQP.AmqpURL,
-		RoutingKey:  cfg.AMQP.RoutingKeyPrefix,
-		Exchange:    cfg.AMQP.Exchange,
+		RabbitMQURL: cfg.RabbitMQ.URL,
+		RoutingKey:  cfg.RabbitMQ.RoutingKey,
+		Exchange:    cfg.RabbitMQ.Exchange,
 		Vhost:       vhost,
 	}
 
